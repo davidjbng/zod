@@ -2060,7 +2060,7 @@ The `ZodType` class has three generic parameters.
 
 ```ts
 class ZodType<
-  Output = any,
+  Output = unknown,
   Def extends ZodTypeDef = ZodTypeDef,
   Input = Output
 > { ... }

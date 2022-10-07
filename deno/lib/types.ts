@@ -132,7 +132,7 @@ export type SafeParseReturnType<Input, Output> =
   | SafeParseError<Input>;
 
 export abstract class ZodType<
-  Output = any,
+  Output = unknown,
   Def extends ZodTypeDef = ZodTypeDef,
   Input = Output
 > {
