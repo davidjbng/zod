@@ -5,6 +5,7 @@ export namespace util {
     ? true
     : false;
 
+  export type isAny<T> = 0 extends 1 & T ? true : false;
   export const assertEqual = <A, B>(val: AssertEqual<A, B>) => val;
   export function assertIs<T>(_arg: T): void {}
   export function assertNever(_x: never): never {
@@ -15,6 +16,7 @@ export namespace util {
   export type OmitKeys<T, K extends string> = Pick<T, Exclude<keyof T, K>>;
   export type MakePartial<T, K extends keyof T> = Omit<T, K> &
     Partial<Pick<T, K>>;
+  export type Exactly<T, X> = T & Record<Exclude<keyof X, keyof T>, never>;
 
   export const arrayToEnum = <T extends string, U extends [T, ...T[]]>(
     items: U
@@ -66,8 +68,9 @@ export namespace util {
     return undefined;
   };
 
-  export type identity<T> = T;
-  export type flatten<T> = identity<{ [k in keyof T]: T[k] }>;
+  export type identity<T> = objectUtil.identity<T>;
+  export type flatten<T> = objectUtil.flatten<T>;
+
   export type noUndefined<T> = T extends undefined ? never : T;
 
   export const isInteger: NumberConstructor["isInteger"] =
@@ -90,6 +93,48 @@ export namespace util {
       return value.toString();
     }
     return value;
+  };
+}
+
+export namespace objectUtil {
+  export type MergeShapes<U, V> = {
+    [k in Exclude<keyof U, keyof V>]: U[k];
+  } & V;
+
+  type optionalKeys<T extends object> = {
+    [k in keyof T]: undefined extends T[k] ? k : never;
+  }[keyof T];
+  type requiredKeys<T extends object> = {
+    [k in keyof T]: undefined extends T[k] ? never : k;
+  }[keyof T];
+  export type addQuestionMarks<T extends object, _O = any> = {
+    [K in requiredKeys<T>]: T[K];
+  } & {
+    [K in optionalKeys<T>]?: T[K];
+  } & { [k in keyof T]?: unknown };
+
+  export type identity<T> = T;
+  export type flatten<T> = identity<{ [k in keyof T]: T[k] }>;
+
+  export type noNeverKeys<T> = {
+    [k in keyof T]: [T[k]] extends [never] ? never : k;
+  }[keyof T];
+
+  export type noNever<T> = identity<{
+    [k in noNeverKeys<T>]: k extends keyof T ? T[k] : never;
+  }>;
+
+  export const mergeShapes = <U, T>(first: U, second: T): T & U => {
+    return {
+      ...first,
+      ...second, // second overwrites first
+    };
+  };
+
+  export type extendShape<A extends object, B extends object> = {
+    [K in keyof A as K extends keyof B ? never : K]: A[K];
+  } & {
+    [K in keyof B]: B[K];
   };
 }
 
@@ -139,6 +184,9 @@ export const getParsedType = (data: any): ZodParsedType => {
 
     case "bigint":
       return ZodParsedType.bigint;
+
+    case "symbol":
+      return ZodParsedType.symbol;
 
     case "object":
       if (Array.isArray(data)) {

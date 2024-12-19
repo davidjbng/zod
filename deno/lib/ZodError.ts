@@ -31,6 +31,7 @@ export const ZodIssueCode = util.arrayToEnum([
   "too_big",
   "invalid_intersection_types",
   "not_multiple_of",
+  "not_finite",
 ]);
 
 export type ZodIssueCode = keyof typeof ZodIssueCode;
@@ -49,6 +50,7 @@ export interface ZodInvalidTypeIssue extends ZodIssueBase {
 export interface ZodInvalidLiteralIssue extends ZodIssueBase {
   code: typeof ZodIssueCode.invalid_literal;
   expected: unknown;
+  received: unknown;
 }
 
 export interface ZodUnrecognizedKeysIssue extends ZodIssueBase {
@@ -89,9 +91,23 @@ export interface ZodInvalidDateIssue extends ZodIssueBase {
 export type StringValidation =
   | "email"
   | "url"
+  | "emoji"
   | "uuid"
+  | "nanoid"
   | "regex"
   | "cuid"
+  | "cuid2"
+  | "ulid"
+  | "datetime"
+  | "date"
+  | "time"
+  | "duration"
+  | "ip"
+  | "cidr"
+  | "base64"
+  | "jwt"
+  | "base64url"
+  | { includes: string; position?: number }
   | { startsWith: string }
   | { endsWith: string };
 
@@ -102,16 +118,18 @@ export interface ZodInvalidStringIssue extends ZodIssueBase {
 
 export interface ZodTooSmallIssue extends ZodIssueBase {
   code: typeof ZodIssueCode.too_small;
-  minimum: number;
+  minimum: number | bigint;
   inclusive: boolean;
-  type: "array" | "string" | "number" | "set" | "date";
+  exact?: boolean;
+  type: "array" | "string" | "number" | "set" | "date" | "bigint";
 }
 
 export interface ZodTooBigIssue extends ZodIssueBase {
   code: typeof ZodIssueCode.too_big;
-  maximum: number;
+  maximum: number | bigint;
   inclusive: boolean;
-  type: "array" | "string" | "number" | "set" | "date";
+  exact?: boolean;
+  type: "array" | "string" | "number" | "set" | "date" | "bigint";
 }
 
 export interface ZodInvalidIntersectionTypesIssue extends ZodIssueBase {
@@ -120,7 +138,11 @@ export interface ZodInvalidIntersectionTypesIssue extends ZodIssueBase {
 
 export interface ZodNotMultipleOfIssue extends ZodIssueBase {
   code: typeof ZodIssueCode.not_multiple_of;
-  multipleOf: number;
+  multipleOf: number | bigint;
+}
+
+export interface ZodNotFiniteIssue extends ZodIssueBase {
+  code: typeof ZodIssueCode.not_finite;
 }
 
 export interface ZodCustomIssue extends ZodIssueBase {
@@ -145,24 +167,30 @@ export type ZodIssueOptionalMessage =
   | ZodTooBigIssue
   | ZodInvalidIntersectionTypesIssue
   | ZodNotMultipleOfIssue
+  | ZodNotFiniteIssue
   | ZodCustomIssue;
 
-export type ZodIssue = ZodIssueOptionalMessage & { message: string };
+export type ZodIssue = ZodIssueOptionalMessage & {
+  fatal?: boolean;
+  message: string;
+};
 
 export const quotelessJson = (obj: any) => {
   const json = JSON.stringify(obj, null, 2);
   return json.replace(/"([^"]+)":/g, "$1:");
 };
 
-export type ZodFormattedError<T, U = string> = {
-  _errors: U[];
-} & (T extends [any, ...any[]]
+type recursiveZodFormattedError<T> = T extends [any, ...any[]]
   ? { [K in keyof T]?: ZodFormattedError<T[K]> }
   : T extends any[]
   ? { [k: number]: ZodFormattedError<T[number]> }
   : T extends object
   ? { [K in keyof T]?: ZodFormattedError<T[K]> }
-  : unknown);
+  : unknown;
+
+export type ZodFormattedError<T, U = string> = {
+  _errors: U[];
+} & recursiveZodFormattedError<NonNullable<T>>;
 
 export type inferFormattedError<
   T extends ZodType<any, any, any>,
@@ -246,10 +274,16 @@ export class ZodError<T = any> extends Error {
     return error;
   };
 
-  toString() {
+  static assert(value: unknown): asserts value is ZodError {
+    if (!(value instanceof ZodError)) {
+      throw new Error(`Not a ZodError: ${value}`);
+    }
+  }
+
+  override toString() {
     return this.message;
   }
-  get message() {
+  override get message() {
     return JSON.stringify(this.issues, util.jsonStringifyReplacer, 2);
   }
 
@@ -296,7 +330,6 @@ export type IssueData = stripPath<ZodIssueOptionalMessage> & {
   path?: (string | number)[];
   fatal?: boolean;
 };
-export type MakeErrorData = IssueData;
 
 export type ErrorMapCtx = {
   defaultError: string;

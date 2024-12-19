@@ -1,3 +1,4 @@
+// @ts-ignore TS6133
 import { expect } from "https://deno.land/x/expect@v0.2.6/mod.ts";
 const test = Deno.test;
 
@@ -25,6 +26,9 @@ test("valid - discriminator value of various primitive types", () => {
     z.object({ type: z.literal(null), val: z.literal(7) }),
     z.object({ type: z.literal("undefined"), val: z.literal(8) }),
     z.object({ type: z.literal(undefined), val: z.literal(9) }),
+    z.object({ type: z.literal("transform"), val: z.literal(10) }),
+    z.object({ type: z.literal("refine"), val: z.literal(11) }),
+    z.object({ type: z.literal("superRefine"), val: z.literal(12) }),
   ]);
 
   expect(schema.parse({ type: "1", val: 1 })).toEqual({ type: "1", val: 1 });
@@ -126,9 +130,7 @@ test("wrong schema - missing discriminator", () => {
     ]);
     throw new Error();
   } catch (e: any) {
-    expect(e.message).toEqual(
-      "The discriminator value could not be extracted from all the provided schemas"
-    );
+    expect(e.message.includes("could not be extracted")).toBe(true);
   }
 });
 
@@ -140,9 +142,7 @@ test("wrong schema - duplicate discriminator values", () => {
     ]);
     throw new Error();
   } catch (e: any) {
-    expect(e.message).toEqual(
-      "Some of the discriminator values are not unique"
-    );
+    expect(e.message.includes("has duplicate value")).toEqual(true);
   }
 });
 
@@ -195,4 +195,127 @@ test("async - invalid", async () => {
       },
     ]);
   }
+});
+
+test("valid - literals with .default or .preprocess", () => {
+  const schema = z.discriminatedUnion("type", [
+    z.object({
+      type: z.literal("foo").default("foo"),
+      a: z.string(),
+    }),
+    z.object({
+      type: z.literal("custom"),
+      method: z.string(),
+    }),
+    z.object({
+      type: z.preprocess((val) => String(val), z.literal("bar")),
+      c: z.string(),
+    }),
+  ]);
+  expect(schema.parse({ type: "foo", a: "foo" })).toEqual({
+    type: "foo",
+    a: "foo",
+  });
+});
+
+test("enum and nativeEnum", () => {
+  enum MyEnum {
+    d,
+    e = "e",
+  }
+
+  const schema = z.discriminatedUnion("key", [
+    z.object({
+      key: z.literal("a"),
+      // Add other properties specific to this option
+    }),
+    z.object({
+      key: z.enum(["b", "c"]),
+      // Add other properties specific to this option
+    }),
+    z.object({
+      key: z.nativeEnum(MyEnum),
+      // Add other properties specific to this option
+    }),
+  ]);
+
+  type schema = z.infer<typeof schema>;
+
+  schema.parse({ key: "a" });
+  schema.parse({ key: "b" });
+  schema.parse({ key: "c" });
+  schema.parse({ key: MyEnum.d });
+  schema.parse({ key: MyEnum.e });
+  schema.parse({ key: "e" });
+});
+
+test("branded", () => {
+  const schema = z.discriminatedUnion("key", [
+    z.object({
+      key: z.literal("a"),
+      // Add other properties specific to this option
+    }),
+    z.object({
+      key: z.literal("b").brand("asdfaf"),
+      // Add other properties specific to this option
+    }),
+  ]);
+
+  type schema = z.infer<typeof schema>;
+
+  schema.parse({ key: "a" });
+  schema.parse({ key: "b" });
+  expect(() => {
+    schema.parse({ key: "c" });
+  }).toThrow();
+});
+
+test("optional and nullable", () => {
+  const schema = z.discriminatedUnion("key", [
+    z.object({
+      key: z.literal("a").optional(),
+      a: z.literal(true),
+    }),
+    z.object({
+      key: z.literal("b").nullable(),
+      b: z.literal(true),
+      // Add other properties specific to this option
+    }),
+  ]);
+
+  type schema = z.infer<typeof schema>;
+  z.util.assertEqual<
+    schema,
+    { key?: "a" | undefined; a: true } | { key: "b" | null; b: true }
+  >(true);
+
+  schema.parse({ key: "a", a: true });
+  schema.parse({ key: undefined, a: true });
+  schema.parse({ key: "b", b: true });
+  schema.parse({ key: null, b: true });
+  expect(() => {
+    schema.parse({ key: null, a: true });
+  }).toThrow();
+  expect(() => {
+    schema.parse({ key: "b", a: true });
+  }).toThrow();
+
+  const value = schema.parse({ key: null, b: true });
+
+  if (!("key" in value)) value.a;
+  if (value.key === undefined) value.a;
+  if (value.key === "a") value.a;
+  if (value.key === "b") value.b;
+  if (value.key === null) value.b;
+});
+
+test("readonly array of options", () => {
+  const options = [
+    z.object({ type: z.literal("x"), val: z.literal(1) }),
+    z.object({ type: z.literal("y"), val: z.literal(2) }),
+  ] as const;
+
+  expect(
+    z.discriminatedUnion("type", options).parse({ type: "x", val: 1 })
+  ).toEqual({ type: "x", val: 1 });
 });

@@ -29,6 +29,18 @@ test("unknown throw", () => {
   expect(() => Test.parse(asdf)).toThrow();
 });
 
+test("shape() should return schema of particular key", () => {
+  const f1Schema = Test.shape.f1;
+  const f2Schema = Test.shape.f2;
+  const f3Schema = Test.shape.f3;
+  const f4Schema = Test.shape.f4;
+
+  expect(f1Schema).toBeInstanceOf(z.ZodNumber);
+  expect(f2Schema).toBeInstanceOf(z.ZodOptional);
+  expect(f3Schema).toBeInstanceOf(z.ZodNullable);
+  expect(f4Schema).toBeInstanceOf(z.ZodArray);
+});
+
 test("correct parsing", () => {
   Test.parse({
     f1: 12,
@@ -111,8 +123,8 @@ test("catchall inference", () => {
     .catchall(z.number());
 
   const d1 = o1.parse({ first: "asdf", num: 1243 });
-  util.assertEqual<number, typeof d1["asdf"]>(true);
-  util.assertEqual<string, typeof d1["first"]>(true);
+  util.assertEqual<number, (typeof d1)["asdf"]>(true);
+  util.assertEqual<string, (typeof d1)["first"]>(true);
 });
 
 test("catchall overrides strict", () => {
@@ -218,6 +230,8 @@ test("inferred merged object type with optional properties", async () => {
     .merge(z.object({ a: z.string().optional(), b: z.string() }));
   type Merged = z.infer<typeof Merged>;
   util.assertEqual<Merged, { a?: string; b: string }>(true);
+  // todo
+  // util.assertEqual<Merged, { a?: string; b: string }>(true);
 });
 
 test("inferred unioned object type with optional properties", async () => {
@@ -385,6 +399,75 @@ test("unknownkeys merging", () => {
   type mergedSchema = typeof mergedSchema;
   util.assertEqual<mergedSchema["_def"]["unknownKeys"], "strip">(true);
   expect(mergedSchema._def.unknownKeys).toEqual("strip");
+
   util.assertEqual<mergedSchema["_def"]["catchall"], z.ZodString>(true);
   expect(mergedSchema._def.catchall instanceof z.ZodString).toEqual(true);
+});
+
+const personToExtend = z.object({
+  firstName: z.string(),
+  lastName: z.string(),
+});
+
+test("extend() should return schema with new key", () => {
+  const PersonWithNickname = personToExtend.extend({ nickName: z.string() });
+  type PersonWithNickname = z.infer<typeof PersonWithNickname>;
+
+  const expected = { firstName: "f", nickName: "n", lastName: "l" };
+  const actual = PersonWithNickname.parse(expected);
+
+  expect(actual).toEqual(expected);
+  util.assertEqual<
+    keyof PersonWithNickname,
+    "firstName" | "lastName" | "nickName"
+  >(true);
+  util.assertEqual<
+    PersonWithNickname,
+    { firstName: string; lastName: string; nickName: string }
+  >(true);
+});
+
+test("extend() should have power to override existing key", () => {
+  const PersonWithNumberAsLastName = personToExtend.extend({
+    lastName: z.number(),
+  });
+  type PersonWithNumberAsLastName = z.infer<typeof PersonWithNumberAsLastName>;
+
+  const expected = { firstName: "f", lastName: 42 };
+  const actual = PersonWithNumberAsLastName.parse(expected);
+
+  expect(actual).toEqual(expected);
+  util.assertEqual<
+    PersonWithNumberAsLastName,
+    { firstName: string; lastName: number }
+  >(true);
+});
+
+test("passthrough index signature", () => {
+  const a = z.object({ a: z.string() });
+  type a = z.infer<typeof a>;
+  util.assertEqual<{ a: string }, a>(true);
+  const b = a.passthrough();
+  type b = z.infer<typeof b>;
+  util.assertEqual<{ a: string } & { [k: string]: unknown }, b>(true);
+});
+
+test("xor", () => {
+  type Without<T, U> = { [P in Exclude<keyof T, keyof U>]?: never };
+  type XOR<T, U> = T extends object
+    ? U extends object
+      ? (Without<T, U> & U) | (Without<U, T> & T)
+      : U
+    : T;
+
+  type A = { name: string; a: number };
+  type B = { name: string; b: number };
+  type C = XOR<A, B>;
+  type Outer = { data: C };
+  const Outer: z.ZodType<Outer> = z.object({
+    data: z.union([
+      z.object({ name: z.string(), a: z.number() }),
+      z.object({ name: z.string(), b: z.number() }),
+    ]),
+  });
 });

@@ -1,3 +1,4 @@
+// @ts-ignore TS6133
 import { test } from "@jest/globals";
 
 import { util } from "../helpers/util";
@@ -68,9 +69,17 @@ test("first party switch", () => {
       break;
     case z.ZodFirstPartyTypeKind.ZodDefault:
       break;
+    case z.ZodFirstPartyTypeKind.ZodCatch:
+      break;
     case z.ZodFirstPartyTypeKind.ZodPromise:
       break;
     case z.ZodFirstPartyTypeKind.ZodBranded:
+      break;
+    case z.ZodFirstPartyTypeKind.ZodPipeline:
+      break;
+    case z.ZodFirstPartyTypeKind.ZodSymbol:
+      break;
+    case z.ZodFirstPartyTypeKind.ZodReadonly:
       break;
     default:
       util.assertNever(def);
